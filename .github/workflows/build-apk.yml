@@ -1,0 +1,203 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Create Android project
+        run: |
+          mkdir -p android/app/src/main/java/io/github/ammorshed6/harkatebadan
+          mkdir -p android/app/src/main/res/values
+
+          cat > android/settings.gradle << 'EOF'
+          rootProject.name = "HarkateBadan"
+          include ':app'
+          EOF
+
+          cat > android/build.gradle << 'EOF'
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
+          }
+          allprojects {
+              repositories { google(); mavenCentral() }
+          }
+          EOF
+
+          cat > android/gradle.properties << 'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+
+          cat > android/app/build.gradle << 'EOF'
+          apply plugin: 'com.android.application'
+          android {
+              namespace 'io.github.ammorshed6.harkatebadan'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "io.github.ammorshed6.harkatebadan"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  debug { minifyEnabled false; debuggable true }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          cat > android/app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:label="হরকতে বদন"
+                  android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+                  android:hardwareAccelerated="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > android/app/src/main/java/io/github/ammorshed6/harkatebadan/MainActivity.java << 'EOF'
+          package io.github.ammorshed6.harkatebadan;
+          import android.annotation.SuppressLint;
+          import android.graphics.Color;
+          import android.os.Bundle;
+          import android.view.View;
+          import android.webkit.WebResourceRequest;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.widget.ProgressBar;
+          import android.widget.RelativeLayout;
+          import androidx.appcompat.app.AppCompatActivity;
+          public class MainActivity extends AppCompatActivity {
+              private WebView webView;
+              private static final String APP_URL = "https://ammorshed6.github.io/HarkateBadan/";
+              @SuppressLint("SetJavaScriptEnabled")
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  RelativeLayout root = new RelativeLayout(this);
+                  root.setBackgroundColor(Color.WHITE);
+                  ProgressBar progressBar = new ProgressBar(this);
+                  progressBar.setId(View.generateViewId());
+                  RelativeLayout.LayoutParams pbParams = new RelativeLayout.LayoutParams(
+                      RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+                  pbParams.addRule(RelativeLayout.CENTER_IN_PARENT);
+                  progressBar.setLayoutParams(pbParams);
+                  webView = new WebView(this);
+                  RelativeLayout.LayoutParams wvParams = new RelativeLayout.LayoutParams(
+                      RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT);
+                  webView.setLayoutParams(wvParams);
+                  webView.setVisibility(View.INVISIBLE);
+                  root.addView(progressBar);
+                  root.addView(webView);
+                  setContentView(root);
+                  WebSettings settings = webView.getSettings();
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                  settings.setLoadWithOverviewMode(true);
+                  settings.setUseWideViewPort(true);
+                  settings.setBuiltInZoomControls(false);
+                  settings.setDisplayZoomControls(false);
+                  webView.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                          return false;
+                      }
+                      @Override
+                      public void onPageFinished(WebView view, String url) {
+                          super.onPageFinished(view, url);
+                          progressBar.setVisibility(View.GONE);
+                          webView.setVisibility(View.VISIBLE);
+                      }
+                  });
+                  if (savedInstanceState != null) { webView.restoreState(savedInstanceState); }
+                  else { webView.loadUrl(APP_URL); }
+              }
+              @Override
+              protected void onSaveInstanceState(Bundle outState) {
+                  super.onSaveInstanceState(outState);
+                  webView.saveState(outState);
+              }
+              @Override
+              public void onBackPressed() {
+                  if (webView.canGoBack()) { webView.goBack(); }
+                  else { super.onBackPressed(); }
+              }
+          }
+          EOF
+
+      - name: Create icons
+        run: |
+          pip install Pillow --quiet
+          python3 << 'EOF'
+          from PIL import Image, ImageDraw
+          import os
+          sizes = {'mdpi':48,'hdpi':72,'xhdpi':96,'xxhdpi':144,'xxxhdpi':192}
+          for density, size in sizes.items():
+              d = f'android/app/src/main/res/mipmap-{density}'
+              os.makedirs(d, exist_ok=True)
+              img = Image.new('RGBA', (size, size), '#2e7d32')
+              draw = ImageDraw.Draw(img)
+              draw.ellipse([size//8, size//8, size*7//8, size*7//8], fill='#ffffff')
+              img.save(f'{d}/ic_launcher.png')
+              img.save(f'{d}/ic_launcher_round.png')
+          print("Icons done!")
+          EOF
+
+      - name: Download Gradle
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O gradle.zip
+          unzip -q gradle.zip
+
+      - name: Build APK
+        run: |
+          cd android
+          ../gradle-8.4/bin/gradle :app:assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HarkateBadan-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
